@@ -1,5 +1,5 @@
 /*
-LightStrip v0.1
+LightStrip v0.2
 
 */
 
