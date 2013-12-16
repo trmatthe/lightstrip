@@ -6,20 +6,15 @@ LightStrip v0.2
 #define dbg  //Serial.print
 #define dbgln //Serial.println
 
-// define output pins as LED colours
-const int rLED=3;
-const int gLED=4;
-const int bLED=5;
+// define output pins as LED colours. Not using 3-5 as PWM on a Mega is shared with these pins.
+const int rLED=11;
+const int gLED=12;
+const int bLED=13;
 
-// value of 0 skips bias adjust. Value is % of full intensity when set to 'max'
-const float rAdj=0;
+// value of 1=no bias adjust, < 1 is a scale factor applied to that channel
+const float rAdj=1;
 const float gAdj=0.80;
 const float bAdj=0.65;
-
-// autoset the bias adjust bools
-const boolean rBias=(rAdj != 0) ? true : false;
-const boolean gBias=(gAdj != 0) ? true : false;
-const boolean bBias=(bAdj != 0) ? true : false;
 
 // define fixed colours.
 const unsigned long RED=0xff0000UL;
@@ -39,7 +34,8 @@ const int mSTROBE=8;
 const int mSTROBEB=16;
 const int mSTROBEW=32;
 
-const int transitionSteps=32; // Number of steps in fades/blends
+// Number of steps in fades/blends
+const int transitionSteps=32; 
 
 // define masks for extracting colour bytes from triple
 const unsigned long maskRED=0xff0000UL;
@@ -67,7 +63,7 @@ void setup() {
 
 void loop() {
 //  showColour(0xffffff);
-  showSequence(caRAINBOW, 5, 20, 30, mBLEND);
+  showSequence(caRB, 2, 50, 50, mSTROBE);
 }
 
 // Functions
@@ -82,20 +78,9 @@ void setLED(int channel, int intensity) {
 // Displays a colour specified by #RRGGBB
 //  Returns currently displayed RGB value
 unsigned long showColour(unsigned long colour) {
-  if (rBias)
-    setLED(rLED, ((colour & maskRED) >> 16) * rAdj);
-  else
-    setLED(rLED, (colour & maskRED) >> 16);
-    
-  if (gBias)
-    setLED(gLED, ((colour & maskGREEN) >> 8) * gAdj);
-  else
-    setLED(gLED, ((colour & maskGREEN) >> 8));
-    
-  if (bBias)
-    setLED(bLED, (colour & maskBLUE) * bAdj);
-  else
-    setLED(gLED, ((colour & maskGREEN) >> 8)); 
+  setLED(rLED, ((colour & maskRED) >> 16) * rAdj);
+  setLED(gLED, ((colour & maskGREEN) >> 8) * gAdj);
+  setLED(bLED, (colour & maskBLUE) * bAdj);
   return colour;
 }
 
