@@ -4,48 +4,33 @@ LightStrip v0.2
 */
 
 #include <IRremote.h>
+#include <EEprom.h> 
+#include "lightstrip.h"
+
+#define dbg  Serial.print
+#define dbgln Serial.println
 
 
-#define dbg  //Serial.print
-#define dbgln //Serial.println
-
-// define output pins as LED colours. Not using 3-5 as PWM on a Mega is shared with these pins.
-const int rLED=11;
-const int gLED=12;
-const int bLED=13;
 
 // value of 1=no bias adjust, < 1 is a scale factor applied to that channel
-const float rAdj=1;
-const float gAdj=0.80;
-const float bAdj=0.65;
+float rAdj;
+float gAdj;
+float bAdj;
 
-// define fixed colours. Remote row/column indicated where appropriate i.e. the mushy vague colour buttons :)
-const unsigned long RED=0xff0000; // column 1, row 2
-const unsigned long ORANGE1=0xFF6600; // column 1, row 3
-const unsigned long ORANGE2=0xE06600; // column 1, row 4
-const unsigned long AMBER=0xFFA600; // column 1, row 5
-const unsigned long YELLOW=0xffff00; // column 1, row 6
+struct conf_t {
+  float rAdj;
+  float gAdj;
+  float bAdj;
+  unsigned long lastColour;
+  int lastBrightness;
+};  
 
-const unsigned long GREEN=0x00ff00; //column 2, row 2
-const unsigned long LIGHTGREEN=0x73FF7C; // column 2, row 3
-const unsigned long JADE1=0x00994C; // column 2, row 4
-const unsigned long JADE2=0x009999; // column 2, row 5
-const unsigned long JADE3=0x004C99; // column 2, row 6
+// increments for colour up/down and brightness up/down
+const int colourInc=10;
+const int colourDec=-10;
+const int brightInc=10;
+const int brightDec=-10;
 
-const unsigned long BLUE=0x0000ff; // column 3, row 2
-const unsigned long PURPLE1=0xff00ff; // column 3, row 4
-const unsigned long ROYALBLUE=0x3333FF; // column 3, row 3
-const unsigned long CRIMSON=0x330019; // column 3, row 5
-const unsigned long PURPLE2=0xCC0066; // column 3, row 6
-
-const unsigned long WHITE=0xffffff; // column 4, row 2
-const unsigned long WARMWHITE1=0xFFE5CC; // pinky white column 4, row 3
-const unsigned long WARMWHITE2=0xFFFFCC; // yellowy white column 4, row 4
-const unsigned long COOLWHITE1=0xCCFFFF; // cyany white column 4, row 5
-const unsigned long COOLWHITE2=0xCCFFE5; // greeny white column 4, row 6
-
-const unsigned long CYAN=0x00ffff; // remote misses cyan, I like it tho
-const unsigned long BLACK=0x000000;
 
 // define sequence modes
 const int mFADEW=1;
@@ -58,10 +43,6 @@ const int mSTROBEW=32;
 // Number of steps in fades/blends
 const int transitionSteps=32; 
 
-// define masks for extracting colour bytes from triple
-const unsigned long maskRED=0xff0000UL;
-const unsigned long maskGREEN=0x00ff00UL;
-const unsigned long maskBLUE=0x0000ffUL;
 
 // define some basic colour_arrays
 unsigned long caRAINBOW[]={RED, YELLOW, GREEN, BLUE, PURPLE1};
@@ -71,68 +52,33 @@ unsigned long caXRXGXB[]={BLACK, RED, BLACK, GREEN, BLACK, BLUE};
 unsigned long caRGB[]={RED, GREEN, BLUE};
 unsigned long caWHITE[]={WHITE};
 
-// remote keypad codes
-const unsigned long kBRIGHTUP = 0xFF3AC5;
-const unsigned long kBRIGHTDOWN = 0xFFBA45;
-const unsigned long kPLAY = 0xFF827D;
-const unsigned long kPOWER = 0xFF02FD;
-const unsigned long kRED = 0xFF1AE5;
-const unsigned long kGREEN = 0xFF9A65;
-const unsigned long kBLUE = 0xFFA25D;
-const unsigned long kWHITE = 0xFF22DD;
-const unsigned long kORANGE1 = 0xFF2AD5;
-const unsigned long kLIGHTGREEN = 0xFFAA55;
-const unsigned long kROYALBLUE = 0xFF926D;
-const unsigned long kWARMWHITE1 = 0xFF12ED;
-const unsigned long kORANGE2 = 0xFF0AF5;
-const unsigned long kJADE1 = 0xFF8A75;
-const unsigned long kPURPLE1 = 0xFFB24D;
-const unsigned long kWARMWHITE2 = 0xFF32CD;
-const unsigned long kAMBER = 0xFF38C7;
-const unsigned long kJADE2 = 0xFFB847;
-const unsigned long kCRIMSON = 0xFF7887;
-const unsigned long kCOOLWHITE1 = 0xFFF807;
-const unsigned long kYELLOW = 0xFF18E7;
-const unsigned long kJADE3 = 0xFF9867;
-const unsigned long kPURPLE2 = 0xFF58A7;
-const unsigned long kCOOLWHITE2 = 0xFFD827;
-const unsigned long kREDUP = 0xFF28D7;
-const unsigned long kGREENUP = 0xFFA857;
-const unsigned long kBLUEUP = 0xFF6897;
-const unsigned long kQUICK = 0xFFE817;
-const unsigned long kREDDOWN = 0xFF08F7;
-const unsigned long kGREENDOWN = 0xFF8877;
-const unsigned long kBLUEDOWN = 0xFF48B7;
-const unsigned long kSLOW = 0xFFC837;
-const unsigned long kDIY1 = 0xFF30CF;
-const unsigned long kDIY2 = 0xFFB04F;
-const unsigned long kDIY3 = 0xFF708F;
-const unsigned long kAUTO = 0xFFF00F;
-const unsigned long kDIY4 = 0xFF10EF;
-const unsigned long kDIY5 = 0xFF906F;
-const unsigned long kDIY6 = 0xFF50AF;
-const unsigned long kFLASH = 0xFFD02F;
-const unsigned long kJUMP3 = 0xFF20DF;
-const unsigned long kJUMP7 = 0xFFA05F;
-const unsigned long kFADE3 = 0xFF609F;
-const unsigned long kFADE7 = 0xFFE01F;
 
 // ir library routines
 int IRpin = 2;
 IRrecv irrecv(IRpin);
 decode_results results;
-
+conf_t myConf;
 // code!
 
 // set LED connected pins as outputs.
 void setup() {
   for (int i=0; i<3; i++)
     pinMode(rLED+i, OUTPUT);
-  
   irrecv.enableIRIn();
-  
-  // setup serial for debug messages
+  myConf.rAdj = 1.0;
+  myConf.gAdj = 1.0;
+  myConf.bAdj = 1.0;
+  myConf.lastColour = 0xFFFFFF;
+  myConf.lastBrightness = 255;
+  unsigned long tmp=showColour(myConf.lastColour);
+  rAdj=myConf.rAdj;
+  gAdj=myConf.gAdj;
+  bAdj=myConf.bAdj;
   Serial.begin(115200);
+  dbg("Size of conf struct: ");
+  dbgln(sizeof(myConf));
+  dbgln("calling readConfig");
+ // readConf();
 }
 
 //  showColour(0xffffff);
@@ -140,8 +86,9 @@ void setup() {
 
 void loop() {
   
-  unsigned long currColour=0x0L;
-  int brightness;
+  static unsigned long currColour, r, g, b;
+  static int brightness;
+  static bool programMode;
   
   if (irrecv.decode(&results)) {
     switch (results.value) {
@@ -201,25 +148,64 @@ void loop() {
         Serial.println("warmwhite2");        
         break;
       case kAMBER:
+        currColour=showColour(AMBER);
+        Serial.println("amber");        
+        break;
       case kJADE2:
+        currColour=showColour(JADE2);
+        Serial.println("JADE2");        
+        break;
       case kCRIMSON:
+        currColour=showColour(CRIMSON);
+        Serial.println("crimson");        
+        break;
       case kCOOLWHITE1:
+        currColour=showColour(COOLWHITE1);
+        Serial.println("coolwhite1");        
+        break;
       case kYELLOW:
+        currColour=showColour(YELLOW);
+        Serial.println("yellow");        
+        break;
       case kJADE3:
+        currColour=showColour(JADE3);
+        Serial.println("jade3");        
+        break;
       case kPURPLE2:
+        currColour=showColour(PURPLE2);
+        Serial.println("purple2");        
+        break;
       case kCOOLWHITE2:
+        currColour=showColour(COOLWHITE2);
+        Serial.println("coolwhite2");        
+        break;
       case kREDUP:
+        currColour=showColour(stepColour(currColour, colourInc, 0, 0));
+        break;
       case kGREENUP:
+        currColour=showColour(stepColour(currColour, 0, colourInc, 0));
+        break;
       case kBLUEUP:
+        currColour=showColour(stepColour(currColour, 0, 0, colourInc));
+        break;
       case kQUICK:
       case kREDDOWN:
+        currColour=showColour(stepColour(currColour, colourDec, 0, 0));
+        break;
       case kGREENDOWN:
+        currColour=showColour(stepColour(currColour, 0, colourDec, 0));
+        break;      
       case kBLUEDOWN:
+        currColour=showColour(stepColour(currColour, 0, 0, colourDec));
+        break;
       case kSLOW:
       case kDIY1:
       case kDIY2:
       case kDIY3:
       case kAUTO:
+        if (programMode) {
+          dbgln("got kAUTO and programMODE was true");
+        } 
       case kDIY4:
       case kDIY5:
       case kDIY6:
@@ -348,15 +334,19 @@ unsigned long stepColour(unsigned long colour, int rStep, int gStep, int bStep) 
     r + rStep < 1 ? 0x00UL
     : r+rStep > 255 ? 0xFFUL
     : r+= rStep;
-
+ 
   g=
     g + gStep < 1 ? 0x00UL
     : g+gStep > 255 ? 0xFFUL
     : g+= gStep;
-
+ 
   b=
     b + bStep < 1 ? 0x00UL
     : b+bStep > 255 ? 0xFFUL
     : b+= bStep;
   return (r << 16) + (g << 8) + b;
+}
+
+void readConf () {
+  
 }
